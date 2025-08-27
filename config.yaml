@@ -1,0 +1,32 @@
+config.yamlworkflow:
+  llm:
+    model: "gpt-4-turbo-preview"
+    temperature: 0.3
+    max_tokens: 4000
+  
+  agents:
+    swagger_analyzer:
+      enabled: true
+      timeout: 120
+    user_story_generator:
+      enabled: true
+      timeout: 180
+      include_personas: true
+    code_generator:
+      enabled: true
+      timeout: 300
+      frameworks:
+        - FastAPI
+        - Flask
+        - Django
+        - Express.js
+        - Spring Boot
+    test_generator:
+      enabled: true
+      timeout: 240
+      test_frameworks:
+        - pytest
+        - unittest
+        - Jest
+        - JUnit
+        - Mocha

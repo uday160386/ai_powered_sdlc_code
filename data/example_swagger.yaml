@@ -1,0 +1,194 @@
+openapi: 3.0.0
+info:
+  title: Customers API
+  version: 1.0.0
+  description: API for managing customer information with authentication and authorization.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT authentication using a Bearer token.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key authentication.
+
+  schemas:
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique identifier for the customer.
+        name:
+          type: string
+          description: Name of the customer.
+        email:
+          type: string
+          format: email
+          description: Email address of the customer.
+        address:
+          type: string
+          description: Physical address of the customer.
+      required:
+        - name
+        - email
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+paths:
+  /customers:
+    get:
+      summary: Get all customers
+      operationId: getAllCustomers
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: A list of customers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new customer
+      operationId: createCustomer
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Customer'
+      responses:
+        '201':
+          description: Customer created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          description: Unauthorized - Authentication required.
+        '403':
+          description: Forbidden - Insufficient permissions.
+        '400':
+          description: Invalid input.
+
+  /customers/{customerId}:
+    get:
+      summary: Get a customer by ID
+      operationId: getCustomerById
+      parameters:
+        - in: path
+          name: customerId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the customer to retrieve.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Customer details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found.
+        '401':
+          description: Unauthorized - Authentication required.
+        '403':
+          description: Forbidden - Insufficient permissions.
+
+    put:
+      summary: Update a customer by ID
+      operationId: updateCustomer
+      parameters:
+        - in: path
+          name: customerId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the customer to update.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: Customer updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found.
+        '401':
+          description: Unauthorized - Authentication required.
+        '403':
+          description: Forbidden - Insufficient permissions.
+        '400':
+          description: Invalid input.
+
+    delete:
+      summary: Delete a customer by ID
+      operationId: deleteCustomer
+      parameters:
+        - in: path
+          name: customerId
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: ID of the customer to delete.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Customer deleted successfully.
+        '404':
+          description: Customer not found.
+        '401':
+          description: Unauthorized - Authentication required.
+        '403':
+          description: Forbidden - Insufficient permissions.
