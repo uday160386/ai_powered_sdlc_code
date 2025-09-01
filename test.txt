@@ -1,4 +1,3 @@
-
 import streamlit as st
 import json
 import yaml
@@ -7,18 +6,15 @@ from dataclasses import dataclass
 from enum import Enum
 import asyncio
 from langgraph.graph import StateGraph, END
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+import tempfile
 import zipfile
 import io
+import re
 import os
 from dotenv import load_dotenv
-# Local agent imports
-from app.agent.SwaggerAnalyzerAgent import SwaggerAnalyzerAgent
-from app.agent.UserStoryGenerationAgent import UserStoryAgent
-from app.agent.CodeGenerationAgent import CodeGeneratorAgent
-from app.agent.UnitTestcaseGenerationAgent import TestGeneratorAgent
-from IPython.display import Image, display
-
 
 # State Management
 class WorkflowState(TypedDict):
@@ -43,52 +39,189 @@ class AgentResult:
     message: str
     step: str
     
+def safe_json_loads(text: str):
+        """Cleans common formatting issues and parses JSON safely."""
+        if not text or not text.strip():
+            raise ValueError("Empty response received from LLM")
+        
+        # Remove Markdown fences (```json ... ```)
+        text = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.MULTILINE)
+        text = re.sub(r"```$", "", text.strip(), flags=re.MULTILINE)
+        
+        # Try parsing
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON: {e}\nRaw content:\n{text[:500]}")
+        
 
+        
+class UserStoryAgent:
+    def __init__(self, llm):
+        self.llm = llm
+        self.prompt = ChatPromptTemplate.from_template("""
+        Based on the Swagger API analysis, generate comprehensive user stories:
+        
+        API Analysis: {analysis}
+        Swagger Paths: {paths}
+        
+        For each endpoint, create user stories that include:
+        1. Title
+        2. user_story (As a... I want... So that...)
+        3. acceptance_criteria (Given/When/Then format)
+        4. priority (High/Medium/Low)
+        5. estimated_effort (Story points 1-13)
+        6. Create both functional and non-functional stories.
+        7. Include edge cases and error handling scenarios.
+        
+        Focus on business value and user needs. Consider different user personas.
+        Return as a JSON array of user story objects.
+        """)
+    
+    
+    async def generate_stories(self, state: WorkflowState) -> WorkflowState:
+        try:
+            paths = state["swagger_content"].get("paths", {})
+            chain = self.prompt | self.llm
+            
+            response = await chain.ainvoke({
+                "analysis": json.dumps(state["metadata"], indent=2),
+                "paths": json.dumps(paths, indent=2)
+            })
+            
+            stories = safe_json_loads(response.content)
+            state["user_stories"] = stories
+            state["current_step"] = "code_generation"
+            return state
+        except Exception as e:
+            state["errors"].append(f"User story generation failed: {str(e)}")
+            return state
+
+class CodeGeneratorAgent:
+    def __init__(self, llm):
+        self.llm = llm
+        self.prompt = ChatPromptTemplate.from_template("""
+        Generate production-ready code based on the Swagger specification:
+        
+        Swagger Content: {swagger_content}
+        User Stories: {user_stories}
+        Target Framework: {framework}
+        
+        Generate:
+        1. API models/schemas
+        2. Service layer classes
+        3. Controller/Router implementations
+        4. Database models (if applicable)
+        5. Configuration files
+        
+        Follow best practices:
+        - Clean architecture principles
+        - Error handling
+        - Input validation
+        - Documentation
+        - Type hints/annotations
+        
+        Return as JSON object with filename as key and code as value.
+        """)
+    
+    async def generate_code(self, state: WorkflowState, framework: str = "FastAPI") -> WorkflowState:
+        try:
+            chain = self.prompt | self.llm
+            
+            response = await chain.ainvoke({
+                "swagger_content": json.dumps(state["swagger_content"], indent=2),
+                "user_stories": json.dumps(state["user_stories"], indent=2),
+                "framework": framework
+            })
+            
+            code_files = safe_json_loads(response.content)
+            state["generated_code"] = code_files
+            state["current_step"] = "test_generation"
+            return state
+        except Exception as e:
+            state["errors"].append(f"Code generation failed: {str(e)}")
+            return state
+
+class TestGeneratorAgent:
+    def __init__(self, llm):
+        self.llm = llm
+        self.prompt = ChatPromptTemplate.from_template("""
+        Generate comprehensive unit tests for the generated code:
+        
+        Generated Code: {generated_code}
+        User Stories: {user_stories}
+        Test Framework: {test_framework}
+        
+        Generate tests that cover:
+        1. Unit tests for each function/method
+        2. Integration tests for API endpoints
+        3. Edge cases and error scenarios
+        4. Input validation tests
+        5. Mock external dependencies
+        
+        Follow testing best practices:
+        - AAA pattern (Arrange, Act, Assert)
+        - Descriptive test names
+        - Test coverage for happy path and error cases
+        - Use appropriate fixtures and mocks
+        
+        Return as JSON object with test filename as key and test code as value.
+        """)
+    
+    async def generate_tests(self, state: WorkflowState, test_framework: str = "pytest") -> WorkflowState:
+        try:
+            chain = self.prompt | self.llm
+            
+            response = await chain.ainvoke({
+                "generated_code": json.dumps(state["generated_code"], indent=2),
+                "user_stories": json.dumps(state["user_stories"], indent=2),
+                "test_framework": test_framework
+            })
+            
+            test_files = safe_json_loads(response.content)
+            state["unit_tests"] = test_files
+            state["current_step"] = "completed"
+            return state
+        except Exception as e:
+            state["errors"].append(f"Test generation failed: {str(e)}")
+            return state
 
 # LangGraph Workflow Definition
 class AgenticWorkflow:
-    def __init__(self, api_key: str, framework: str):
+    def __init__(self, api_key: str):
         self.llm = ChatOpenAI(
             api_key=api_key,
             model="gpt-4-turbo-preview",
             temperature=0.3
         )
-        self.framework = framework
+        
         self.swagger_agent = SwaggerAnalyzerAgent(self.llm)
         self.story_agent = UserStoryAgent(self.llm)
         self.code_agent = CodeGeneratorAgent(self.llm)
         self.test_agent = TestGeneratorAgent(self.llm)
+        
         self.workflow = self._build_workflow()
-        # st.image(self.workflow.get_graph().draw_mermaid_png())
-
+    
     def _build_workflow(self) -> StateGraph:
         # Create the state graph
         workflow = StateGraph(WorkflowState)
         
         # Add nodes
         workflow.add_node("analyze_swagger", self.swagger_agent.analyze)
-       
         workflow.add_node("generate_stories", self.story_agent.generate_stories)
-        # Pass framework to code generation node
-        async def generate_code_with_framework(state):
-            print(self.framework)
-            state["framework"] = self.framework
-            return await self.code_agent.generate_code(state, self.framework)
-
-        workflow.add_node("generate_code", generate_code_with_framework)
-        # workflow.add_node("generate_tests", self.test_agent.generate_tests)
+        workflow.add_node("generate_code", self.code_agent.generate_code)
+        workflow.add_node("generate_tests", self.test_agent.generate_tests)
         
         # Define the workflow edges
         workflow.add_edge("analyze_swagger", "generate_stories")
         workflow.add_edge("generate_stories", "generate_code")
-        workflow.add_edge("generate_code", END)
-        # workflow.add_edge("generate_tests", END)
+        workflow.add_edge("generate_code", "generate_tests")
+        workflow.add_edge("generate_tests", END)
         
         # Set entry point
         workflow.set_entry_point("analyze_swagger")
         
         return workflow.compile()
-    
     
     async def run_workflow(self, swagger_content: Dict[str, Any]) -> WorkflowState:
         initial_state: WorkflowState = {
@@ -103,7 +236,6 @@ class AgenticWorkflow:
         
         result = await self.workflow.ainvoke(initial_state)
         return result
-
 
 # Streamlit UI
 def main():
@@ -136,11 +268,11 @@ def main():
         "Code Framework",
         ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot"]
     )
+    
     test_framework = st.sidebar.selectbox(
         "Test Framework",
         ["pytest", "unittest", "Jest", "JUnit", "Mocha"]
     )
-   
     
     # Initialize session state
     if 'workflow_results' not in st.session_state:
@@ -179,17 +311,22 @@ def main():
                 status_text = st.empty()
                 
                 try:
-                    # Initialize workflow with framework
-                    workflow = AgenticWorkflow(api_key, framework)
+                    # Initialize workflow
+                    workflow = AgenticWorkflow(api_key)
+                    
                     # Run the workflow
                     status_text.text("🔍 Analyzing Swagger specification...")
                     progress_bar.progress(25)
+                    
                     # Since we can't use asyncio in Streamlit directly, we'll simulate the workflow
                     # In a real implementation, you'd use asyncio.run() or similar
                     result = asyncio.run(workflow.run_workflow(swagger_content))
+                    
                     progress_bar.progress(100)
                     status_text.text("✅ Workflow completed successfully!")
+                    
                     st.session_state.workflow_results = result
+                    
                 except Exception as e:
                     st.error(f"❌ Workflow failed: {str(e)}")
                 finally:
@@ -200,27 +337,24 @@ def main():
     
     # Display results
     if st.session_state.workflow_results:
-        
         results = st.session_state.workflow_results
         
         st.header("📊 Workflow Results")
         
         # Create tabs for different outputs
         tab1, tab2, tab3, tab4 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "📁 Download All"])
-        
+        print(results)
         with tab1:
             st.subheader("Generated User Stories")
             if results.get("user_stories"):
                 for i, story in enumerate(results["user_stories"], 1):
-                    with st.expander(f"Story {i}: {story.get('title', 'Untitled')}"):
+                    with st.expander(f"Story {i}: {story.get('Title', 'Untitled')}"):
                         st.write(f"**Description:** {story.get('user_story', 'Untitled')}")
-                        st.write(f"**Acceptance Criteria:** {story.get('acceptance_criteria', 'Untitled')}")
                         st.write(f"**Priority:** {story.get('priority', 'Medium')}")
                         st.write(f"**Estimated Effort:** {story.get('estimated_effort', '1')}")
                         st.write(f"**Type:** {story.get('type', 'Functional')}")
-                        st.write(f"**Edge Cases:** {story.get('edge_cases', '')}")
-                        st.write(f"**More Details:** {story.get('reference', '')}")
-                                 
+                        st.write(f"**Acceptance Criteria:** {story.get('acceptance_criteria', 'Untitled')}")
+                        
             else:
                 st.info("No user stories generated yet.")
         
@@ -282,7 +416,5 @@ def main():
             for error in results["errors"]:
                 st.error(error)
 
-
 if __name__ == "__main__":
     main()
-    

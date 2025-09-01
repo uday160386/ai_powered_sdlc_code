@@ -1,5 +1,4 @@
-import re
-import json
+import json, re
 
 def safe_json_loads(text: str):
         """Cleans common formatting issues and parses JSON safely."""
@@ -12,9 +11,6 @@ def safe_json_loads(text: str):
         
         # Try parsing
         try:
-            print("Uday")
-            print(json.loads(text))
             return json.loads(text)
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse JSON: {e}\nRaw content:\n{text[:500]}")
-        

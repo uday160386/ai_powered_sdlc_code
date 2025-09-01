@@ -1,194 +1,302 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: Customers API
+  title: Loan Management API
+  description: |
+    A professional and secure API for managing the lifecycle of loans.
+    This API allows authenticated clients to create, retrieve, update, and manage loan applications and existing loans.
   version: 1.0.0
-  description: API for managing customer information with authentication and authorization.
-
+  contact:
+    name: API Support
+    email: support@example.com
+    url: https://docs.example.com/api/loans
 servers:
   - url: https://api.example.com/v1
     description: Production server
-
+  - url: https://api-staging.example.com/v1
+    description: Staging server
+paths:
+  /loans:
+    get:
+      summary: Retrieve a list of loans
+      operationId: getLoans
+      tags:
+        - Loans
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          description: Filter loans by their current status.
+          schema:
+            type: string
+            enum: [pending, approved, declined, repaid]
+        - in: query
+          name: page
+          description: The page number for pagination.
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          description: The number of items per page.
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: A paginated list of loans.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a new loan application
+      operationId: createLoan
+      tags:
+        - Loans
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: Loan application data to create a new loan.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequest'
+            example:
+              clientId: 'clnt_a1b2c3d4'
+              amount: 500000
+              currency: 'USD'
+              termInMonths: 12
+              interestRate: 5.5
+      responses:
+        '201':
+          description: The loan application was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /loans/{loanId}:
+    get:
+      summary: Retrieve a single loan by ID
+      operationId: getLoanById
+      tags:
+        - Loans
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: loanId
+          required: true
+          description: The unique identifier of the loan.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: A single loan object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
   securitySchemes:
-    BearerAuth:
+    bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT authentication using a Bearer token.
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: API Key authentication.
-
+      description: |
+        JWT-based authentication.
+        A valid JWT token must be provided in the `Authorization` header as `Bearer <token>`.
   schemas:
-    Customer:
+    Loan:
       type: object
+      required:
+        - id
+        - clientId
+        - amount
+        - currency
+        - termInMonths
+        - interestRate
+        - status
       properties:
         id:
           type: string
           format: uuid
-          readOnly: true
-          description: Unique identifier for the customer.
-        name:
+          description: The unique identifier for the loan.
+        clientId:
           type: string
-          description: Name of the customer.
-        email:
+          description: The identifier for the client who applied for the loan.
+        amount:
+          type: integer
+          description: The loan amount in cents.
+        currency:
           type: string
-          format: email
-          description: Email address of the customer.
-        address:
+          description: The currency of the loan, e.g., `USD`.
+        termInMonths:
+          type: integer
+          description: The loan term in months.
+        interestRate:
+          type: number
+          format: float
+          description: The interest rate as a percentage.
+        status:
           type: string
-          description: Physical address of the customer.
+          enum: [pending, approved, declined, repaid]
+          description: The current status of the loan.
+    LoanListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Loan'
+        metadata:
+          type: object
+          properties:
+            currentPage:
+              type: integer
+            totalPages:
+              type: integer
+            totalCount:
+              type: integer
+    LoanResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Loan'
+    LoanApplicationRequest:
+      type: object
       required:
-        - name
-        - email
-
+        - clientId
+        - amount
+        - currency
+        - termInMonths
+        - interestRate
+      properties:
+        clientId:
+          type: string
+          description: The identifier for the client applying for the loan.
+        amount:
+          type: integer
+          description: The desired loan amount in cents.
+        currency:
+          type: string
+          description: The currency of the loan, e.g., `USD`.
+        termInMonths:
+          type: integer
+          description: The desired loan term in months.
+        interestRate:
+          type: number
+          format: float
+          description: The proposed interest rate as a percentage.
     Error:
       type: object
+      required:
+        - code
+        - message
       properties:
         code:
           type: string
+          description: A machine-readable error code.
         message:
           type: string
-
-paths:
-  /customers:
-    get:
-      summary: Get all customers
-      operationId: getAllCustomers
-      security:
-        - BearerAuth: []
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: A list of customers.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Customer'
-        '401':
-          description: Unauthorized - Authentication required.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden - Insufficient permissions.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-    post:
-      summary: Create a new customer
-      operationId: createCustomer
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Customer'
-      responses:
-        '201':
-          description: Customer created successfully.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Customer'
-        '401':
-          description: Unauthorized - Authentication required.
-        '403':
-          description: Forbidden - Insufficient permissions.
-        '400':
-          description: Invalid input.
-
-  /customers/{customerId}:
-    get:
-      summary: Get a customer by ID
-      operationId: getCustomerById
-      parameters:
-        - in: path
-          name: customerId
+          description: A human-readable error description.
+        details:
+          type: array
+          description: Optional list of specific validation issues.
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                description: The field that failed validation.
+              reason:
+                type: string
+                description: The reason for the validation failure.
+  responses:
+    BadRequestError:
+      description: The request was invalid (e.g., malformed syntax).
+      content:
+        application/json:
           schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the customer to retrieve.
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Customer details.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Customer'
-        '404':
-          description: Customer not found.
-        '401':
-          description: Unauthorized - Authentication required.
-        '403':
-          description: Forbidden - Insufficient permissions.
-
-    put:
-      summary: Update a customer by ID
-      operationId: updateCustomer
-      parameters:
-        - in: path
-          name: customerId
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'invalid_request'
+            message: 'Invalid request payload.'
+    UnauthorizedError:
+      description: Authentication information is missing or invalid.
+      content:
+        application/json:
           schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the customer to update.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Customer'
-      responses:
-        '200':
-          description: Customer updated successfully.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Customer'
-        '404':
-          description: Customer not found.
-        '401':
-          description: Unauthorized - Authentication required.
-        '403':
-          description: Forbidden - Insufficient permissions.
-        '400':
-          description: Invalid input.
-
-    delete:
-      summary: Delete a customer by ID
-      operationId: deleteCustomer
-      parameters:
-        - in: path
-          name: customerId
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'unauthorized'
+            message: 'Authentication failed. Please provide a valid token.'
+    ForbiddenError:
+      description: The authenticated user does not have permission to access the resource.
+      content:
+        application/json:
           schema:
-            type: string
-            format: uuid
-          required: true
-          description: ID of the customer to delete.
-      security:
-        - BearerAuth: []
-      responses:
-        '204':
-          description: Customer deleted successfully.
-        '404':
-          description: Customer not found.
-        '401':
-          description: Unauthorized - Authentication required.
-        '403':
-          description: Forbidden - Insufficient permissions.
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'forbidden'
+            message: 'Access denied. User does not have the required permissions.'
+    NotFoundError:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'not_found'
+            message: 'Loan with ID "1234" not found.'
+    ValidationError:
+      description: A client-side validation error occurred (e.g., invalid data format).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'validation_error'
+            message: 'Request validation failed.'
+            details:
+              - field: 'amount'
+                reason: 'Amount must be a positive integer.'
+              - field: 'currency'
+                reason: 'Currency "EUR" is not supported.'
+    InternalServerError:
+      description: An unexpected server-side error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 'internal_error'
+            message: 'An internal server error occurred.'

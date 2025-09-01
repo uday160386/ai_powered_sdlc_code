@@ -29,7 +29,6 @@ class SwaggerAnalyzerAgent:
             response = await chain.ainvoke({
                 "swagger_content": json.dumps(state["swagger_content"], indent=2)
             })
-            print(response.content)
             analysis = safe_json_loads(response.content)
             state["metadata"] = analysis
             state["current_step"] = "user_stories"
