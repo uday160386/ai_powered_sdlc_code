@@ -1,118 +1,17 @@
-
-import streamlit as st
+# Standard imports
+import os
+import io
 import json
 import yaml
-from typing import Dict, List, Any, TypedDict
-from dataclasses import dataclass
-from enum import Enum
-import asyncio
-from langgraph.graph import StateGraph, END
-# from langchain_openai import ChatOpenAI
 import zipfile
-import io
-import os
+import asyncio
+
+
+from app.workflow.AgenticWorkflow import AgenticWorkflow
+
+# Third-party imports
+import streamlit as st
 from dotenv import load_dotenv
-# Local agent imports
-from app.agent.SwaggerAnalyzerAgent import SwaggerAnalyzerAgent
-from app.agent.UserStoryGenerationAgent import UserStoryAgent
-from app.agent.CodeGenerationAgent import CodeGeneratorAgent
-from app.agent.UnitTestcaseGenerationAgent import TestGeneratorAgent
-from IPython.display import Image, display
-
-from langchain_anthropic import ChatAnthropic
-
-# State Management
-class WorkflowState(TypedDict):
-    swagger_content: Dict[str, Any]
-    user_stories: List[Dict[str, Any]]
-    generated_code: Dict[str, str]
-    unit_tests: Dict[str, str]
-    current_step: str
-    errors: List[str]
-    metadata: Dict[str, Any]
-
-class StepStatus(Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-@dataclass
-class AgentResult:
-    success: bool
-    data: Any
-    message: str
-    step: str
-    
-
-
-# LangGraph Workflow Definition
-class AgenticWorkflow:
-    def __init__(self, api_key: str, framework: str, test_framework: str):
-        
-        
-        self.llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",  # Or other models like "claude-3-opus-20240229"
-            api_key=api_key,  # Use this if not using environment variable
-            temperature=0.3,
-            max_tokens=7000  # Set a reasonable max token limit for output
-        )
-        
-        self.framework = framework
-        self.test_framework= test_framework
-        self.swagger_agent = SwaggerAnalyzerAgent(self.llm)
-        self.story_agent = UserStoryAgent(self.llm)
-        self.code_agent = CodeGeneratorAgent(self.llm)
-        self.test_agent = TestGeneratorAgent(self.llm)
-        self.workflow = self._build_workflow()
-        # st.image(self.workflow.get_graph().draw_mermaid_png())
-
-    def _build_workflow(self) -> StateGraph:
-        # Create the state graph
-        workflow = StateGraph(WorkflowState)
-        
-        # Add nodes
-        workflow.add_node("analyze_swagger", self.swagger_agent.analyze)
-       
-        workflow.add_node("generate_stories", self.story_agent.generate_stories)
-        # Pass framework to code generation node
-        async def generate_code_with_framework(state):
-            state["framework"] = self.framework
-            return await self.code_agent.generate_code(state, self.framework)
-        
-        async def generate_code_with_test_framework(state):
-            state["test_framework"] = self.test_framework
-            return await self.test_agent.generate_tests(state, self.test_framework)
-
-        workflow.add_node("generate_code", generate_code_with_framework)
-        workflow.add_node("generate_tests", generate_code_with_test_framework)
-        
-        # Define the workflow edges
-        workflow.add_edge("analyze_swagger", "generate_stories")
-        workflow.add_edge("generate_stories", "generate_code")
-        workflow.add_edge("generate_code", "generate_tests")
-        workflow.add_edge("generate_tests", END)
-        
-        # Set entry point
-        workflow.set_entry_point("analyze_swagger")
-        
-        return workflow.compile()
-    
-    
-    async def run_workflow(self, swagger_content: Dict[str, Any]) -> WorkflowState:
-        initial_state: WorkflowState = {
-            "swagger_content": swagger_content,
-            "user_stories": [],
-            "generated_code": {},
-            "unit_tests": {},
-            "current_step": "analyze_swagger",
-            "errors": [],
-            "metadata": {}
-        }
-        
-        result = await self.workflow.ainvoke(initial_state)
-        return result
-
 
 # Streamlit UI
 def main():
@@ -122,32 +21,34 @@ def main():
         layout="wide"
     )
     
-    st.sidebar.title("🤖 AI Powered SDLC workflow")
-    # st.subtitle("Automated User Stories, Code & Test Generation from Swagger/OpenAPI")
+    st.title("🤖 SToP")
+    st.subheader("AI Powered, production-ready code generator")
     
     # Sidebar configuration
     st.sidebar.header("Configuration")
-    
-    # # API Key input
-    # api_key = st.sidebar.text_input(
-    #     "OpenAI API Key",
-    #     type="password",
-    #     help="Enter your OpenAI API key to use the AI agents"
-    # )
-    
-    # if not api_key:
-    #     st.warning("Please enter your OpenAI API key in the sidebar to continue.")
-    #     return
+
     load_dotenv()
     api_key = os.getenv("ANTHROPIC_API_KEY", None)
+    
+    # user story selection option
+    user_story_selection = st.sidebar.selectbox(
+        "User Story Generation",
+        ["Yes",  "No"]
+    )
+    
     # Framework selection
     framework = st.sidebar.selectbox(
         "Code Framework",
-        ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot"]
+        ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot", "No Selection"]
     )
     test_framework = st.sidebar.selectbox(
         "Test Framework",
-        ["pytest", "unittest", "Jest", "JUnit", "Mocha"]
+        ["pytest", "unittest", "Jest", "JUnit", "Mocha", "No Selection"]
+    )
+    
+    cloud_option = st.sidebar.selectbox(
+        "Public Cloud",
+        ["AWS", "Azure", "No Selection"]
     )
    
     
@@ -176,12 +77,9 @@ def main():
             import time
             success_msg = st.sidebar.empty()
             success_msg.success(f"✅ Successfully loaded {uploaded_file.name}")
-            # time.sleep(1)
+       
             success_msg.empty()
 
-            # # Display swagger info
-            # info = swagger_content.get('info', {})
-            # st.sidebar.info(f"**API:** {info.get('title', 'Unknown')} v{info.get('version', '1.0')}")
 
             # Process button
             if st.sidebar.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
@@ -193,9 +91,9 @@ def main():
                 
                 try:
                     # Initialize workflow with framework
-                    workflow = AgenticWorkflow(api_key, framework, test_framework)
+                    workflow = AgenticWorkflow(api_key, framework, test_framework, cloud_option)
                     # Run the workflow
-                    status_text.text("🔍 Analyzing Swagger specification...")
+                    status_text.text("🔍 Artifacts generation in progress...")
                     progress_bar.progress(25)
                     # Since we can't use asyncio in Streamlit directly, we'll simulate the workflow
                     # In a real implementation, you'd use asyncio.run() or similar
@@ -211,15 +109,12 @@ def main():
         except Exception as e:
             st.error(f"❌ Failed to parse file: {str(e)}")
     
+
     # Display results
     if st.session_state.workflow_results:
-        
         results = st.session_state.workflow_results
-        
         st.header("📊 Workflow Results")
-        
-        # Create tabs for different outputs
-        tab1, tab2, tab3, tab4 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "📁 Download All"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "Container Code","Setup guide", "📁 Download All"])
 
         with tab1:
             st.subheader("Generated User Stories")
@@ -242,7 +137,7 @@ def main():
             if results.get("generated_code"):
                 for filename, code in results["generated_code"].items():
                     with st.expander(f"📄 {filename}"):
-                        st.code(code, language="python")
+                        st.code(code)
             else:
                 st.info("No code generated yet.")
         
@@ -251,14 +146,29 @@ def main():
             if results.get("unit_tests"):
                 for filename, test_code in results["unit_tests"].items():
                     with st.expander(f"🧪 {filename}"):
-                        st.code(test_code, language="python")
+                        st.code(test_code)
             else:
                 st.info("No tests generated yet.")
-        
         with tab4:
+            st.subheader("Container Code")
+            if results.get("generated_container_code"):
+                for filename, test_code in results["generated_container_code"].items():
+                    with st.expander(f"🧪 {filename}"):
+                        st.code(test_code)
+            else:
+                st.info("No container code generated yet.")
+        with tab5:
+            st.subheader("SetUp Instructions")
+            if results.get("generated_readme_code"):
+                for generated_readme in results["generated_readme_code"].items():
+                    with st.expander(f"🧪 Setup Instructions to follow"):
+                        st.code(generated_readme)
+            else:
+                st.info("No Readme file generated yet.")        
+        with tab6:
             st.subheader("Download All Generated Files")
             
-            if results.get("generated_code") or results.get("unit_tests"):
+            if results.get("generated_code") or results.get("unit_tests") or results.get("generated_container_code"):
                 # Create a zip file with all generated content
                 zip_buffer = io.BytesIO()
                 

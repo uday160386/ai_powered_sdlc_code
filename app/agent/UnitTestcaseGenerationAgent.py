@@ -221,7 +221,7 @@ class TestGeneratorAgent:
                 zip_buffer.seek(0)
                 state["generated_zip"] = zip_buffer.read()
 
-            state["current_step"] = "unit_tests"
+            state["current_step"] = "generated_container_code"
             return state
         except Exception as e:
             state["errors"].append(f"Code generation failed: {str(e)}")

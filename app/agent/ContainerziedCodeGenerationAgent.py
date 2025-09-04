@@ -8,16 +8,14 @@ from app.util.safe_text_genneration import safe_json_loads
 from langchain.prompts import ChatPromptTemplate
 from app.workflow.langgraph_agentic_workflow import WorkflowState
 
-class CodeGeneratorAgent:
+class ContainerziedCodeGenerationAgent:
     def __init__(self, llm):
         self.llm = llm
         self.prompt = ChatPromptTemplate.from_template("""
-    Based on the Swagger specification, generate a production-ready application, including middleware, authentication, environment configuration,  error handling and a README guide, Docker file, and AWS EKS.
+    Based on the generated production-ready code create Docker file,helm charts, and AWS EKS or Azure Kubernetes Service (AKS) code files.
 
-    Swagger Content: {swagger_content}
-    User Stories: {user_stories}
-    Target Framework: {framework}
-
+    Generated Code: {generated_code}
+    
     Generate:
     1. API models/schemas
     2. Service layer classes
@@ -35,20 +33,20 @@ class CodeGeneratorAgent:
 
     Output format:
     For each file, use the following delimiters (do not use markdown or code blocks):
-    >>>FILE_PATH_START<<< path/to/file.py >>>FILE_PATH_END<<<
+    >>>FILE_PATH_START<<< path/to/file >>>FILE_PATH_END<<<
     >>>FILE_CONTENT_START<<<
     <file content here>
     >>>FILE_CONTENT_END<<<
     Repeat for each file. Do not return JSON. Only return plain text in the above format.
     """)
     
-    async def generate_code(self, state: WorkflowState, framework: str = "FastAPI") -> WorkflowState:
+    async def generate_code(self, state: WorkflowState, framework: str = "AWS EKS") -> WorkflowState:
         print(framework)
         try:
+            generated_code = state.get("generated_code", {})
             chain = self.prompt | self.llm
             response = await chain.ainvoke({
-                "swagger_content": json.dumps(state["swagger_content"], indent=2),
-                "user_stories": json.dumps(state["user_stories"], indent=2),
+                "generated_code": json.dumps(generated_code, indent=2),
                 "framework": framework
             })
             raw_content = response.content.strip()
@@ -59,12 +57,12 @@ class CodeGeneratorAgent:
             matches = re.findall(pattern, raw_content)
             if not matches:
                 # Fallback: Try to extract code blocks if delimiters are missing
-                fallback_pattern = r"([\w\-/]+\.py)[\s\S]*?```([\s\S]*?)```"
+                fallback_pattern = r"([\w\-/]+\.)[\s\S]*?```([\s\S]*?)```"
                 fallback_matches = re.findall(fallback_pattern, raw_content)
                 if fallback_matches:
                     for file_path, file_content in fallback_matches:
                         files[file_path.strip()] = file_content.strip()
-                    state["generated_code"] = files
+                    state["generated_container_code"] = files
                     # Create in-memory ZIP
                     import io, zipfile
                     zip_buffer = io.BytesIO()
@@ -77,11 +75,11 @@ class CodeGeneratorAgent:
                     state["errors"].append(
                         f"Code generation failed: No files found in LLM response. Raw content:\n{raw_content[:1000]}"
                     )
-                    state["generated_code"] = {}
+                    state["generated_container_code"] = {}
             else:
                 for file_path, file_content in matches:
                     files[file_path.strip()] = file_content.strip()
-                state["generated_code"] = files
+                state["generated_container_code"] = files
                 # Create in-memory ZIP
                 import io, zipfile
                 zip_buffer = io.BytesIO()
@@ -91,8 +89,8 @@ class CodeGeneratorAgent:
                 zip_buffer.seek(0)
                 state["generated_zip"] = zip_buffer.read()
 
-            state["current_step"] = "test_generation"
+            state["current_step"] = "end"
             return state
         except Exception as e:
-            state["errors"].append(f"Code generation failed: {str(e)}")
+            state["errors"].append(f"container code  failed: {str(e)}")
             return state
