@@ -1,9 +1,7 @@
-from app.util.safe_text_genneration import safe_json_loads
 from langchain.prompts import ChatPromptTemplate
 from app.workflow.langgraph_agentic_workflow import WorkflowState
 import json
-import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
 
 class TestGeneratorAgent:
@@ -15,9 +13,7 @@ class TestGeneratorAgent:
         Generate professional, production-ready unit tests that achieve exactly 70% code coverage.
 
         **Swagger Specification Analysis:**
-        Swagger Content: {swagger_content}
         Generated Code: {generated_code}
-        User Stories: {user_stories}
         Test Framework: {test_framework}
 
         **Coverage Strategy for 70% Target:**
@@ -152,6 +148,14 @@ class TestGeneratorAgent:
 
         Generate tests that a senior developer would be proud to review and maintain.
         Focus on quality over quantity while achieving the 70% coverage target.
+        
+        Output format:
+        For each file, use the following delimiters (do not use markdown or code blocks):
+        >>>FILE_PATH_START<<< path/to/file.py >>>FILE_PATH_END<<<
+        >>>FILE_CONTENT_START<<<
+        <file content here>
+        >>>FILE_CONTENT_END<<<
+        Repeat for each file. Do not return JSON. Only return plain text in the above format.
         """)
 
     async def generate_tests(self, state: WorkflowState, test_framework: str = "pytest") -> WorkflowState:
@@ -166,327 +170,59 @@ class TestGeneratorAgent:
             print(f"🎯 Generating professional test suite targeting 70% coverage...")
             print(f"📋 Framework: {test_framework}")
             
-            # Analyze Swagger specification for test planning
-            coverage_plan = self._analyze_swagger_for_coverage(swagger_content)
-            print(f"📊 Coverage Plan: {coverage_plan['total_endpoints']} endpoints, {coverage_plan['complexity_score']} complexity")
-            
             # Generate tests using LLM
             chain = self.prompt | self.llm
-            response = await chain.ainvoke({
-                "swagger_content": json.dumps(swagger_content, indent=2),
+            response = chain.invoke({
                 "generated_code": json.dumps(generated_code, indent=2),
-                "user_stories": json.dumps(user_stories, indent=2),
                 "test_framework": test_framework
             })
             
             print("✅ Test generation completed")
             
             # Parse and validate response
-            test_suite = safe_json_loads(response.content)
-            
-            # Enrich test suite with additional metadata
-            enriched_test_suite = self._enrich_test_suite(test_suite, coverage_plan, swagger_content)
-            
-            # Update state
-            state["unit_tests"] = enriched_test_suite
-            state["test_coverage_target"] = self.coverage_target
-            state["test_generation_metadata"] = {
-                "framework": test_framework,
-                "generation_timestamp": datetime.now().isoformat(),
-                "coverage_analysis": coverage_plan,
-                "estimated_test_count": self._count_tests_in_suite(enriched_test_suite)
-            }
-            state["current_step"] = "test_validation"
-            
-            # Log success metrics
-            self._log_test_generation_success(enriched_test_suite, coverage_plan)
-            
-            return state
-            
-        except json.JSONDecodeError as json_error:
-            error_msg = f"Failed to parse test generation response as JSON: {str(json_error)}"
-            print(f"❌ JSON Parse Error: {error_msg}")
-            
-            # Store raw response for debugging
-            state["unit_tests"] = {
-                "generation_error": "json_parse_failure",
-                "raw_response": response.content if 'response' in locals() else "No response generated",
-                "error_details": str(json_error)
-            }
-            state["errors"].append(error_msg)
-            return state
-            
-        except Exception as e:
-            error_msg = f"Test generation failed: {str(e)}"
-            print(f"❌ Test Generation Error: {error_msg}")
-            
-            state["errors"].append(error_msg)
-            state["test_generation_metadata"] = {
-                "status": "failed",
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "framework": test_framework,
-                "timestamp": datetime.now().isoformat()
-            }
-            return state
-
-    def _analyze_swagger_for_coverage(self, swagger_content: Dict) -> Dict[str, Any]:
-        """
-        Analyze Swagger specification to plan test coverage strategy
-        """
-        paths = swagger_content.get("paths", {})
-        components = swagger_content.get("components", {})
-        schemas = components.get("schemas", {})
-        
-        # Count endpoints and operations
-        total_endpoints = len(paths)
-        total_operations = 0
-        http_methods = set()
-        
-        for path, methods in paths.items():
-            for method in methods:
-                if method.lower() in ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']:
-                    total_operations += 1
-                    http_methods.add(method.upper())
-        
-        # Analyze schemas for validation testing
-        schema_properties = 0
-        required_fields = 0
-        
-        for schema_name, schema_def in schemas.items():
-            properties = schema_def.get("properties", {})
-            schema_properties += len(properties)
-            required_fields += len(schema_def.get("required", []))
-        
-        # Calculate complexity score
-        complexity_score = (
-            total_operations * 2 +  # Each operation needs multiple tests
-            schema_properties * 1 +  # Each property needs validation
-            len(http_methods) * 1    # Each HTTP method type
-        )
-        
-        # Determine critical paths for 70% coverage
-        critical_paths = self._identify_critical_paths(paths)
-        
-        return {
-            "total_endpoints": total_endpoints,
-            "total_operations": total_operations,
-            "http_methods": list(http_methods),
-            "schema_count": len(schemas),
-            "schema_properties": schema_properties,
-            "required_fields": required_fields,
-            "complexity_score": complexity_score,
-            "critical_paths": critical_paths,
-            "coverage_strategy": self._create_coverage_strategy(total_operations, complexity_score)
-        }
     
-    def _identify_critical_paths(self, paths: Dict) -> List[Dict]:
-        """
-        Identify critical API paths that must be covered for 70% target
-        """
-        critical_paths = []
-        
-        for path, methods in paths.items():
-            for method, operation_def in methods.items():
-                if method.lower() in ['get', 'post', 'put', 'delete', 'patch']:
-                    # Determine criticality based on operation characteristics
-                    criticality = self._calculate_path_criticality(operation_def)
-                    
-                    critical_paths.append({
-                        "path": path,
-                        "method": method.upper(),
-                        "operation_id": operation_def.get("operationId", f"{method}_{path}"),
-                        "criticality_score": criticality,
-                        "requires_auth": "security" in operation_def,
-                        "has_request_body": "requestBody" in operation_def,
-                        "response_codes": list(operation_def.get("responses", {}).keys())
-                    })
-        
-        # Sort by criticality and select top 70%
-        critical_paths.sort(key=lambda x: x["criticality_score"], reverse=True)
-        coverage_count = int(len(critical_paths) * 0.7)
-        
-        return critical_paths[:coverage_count]
-    
-    def _calculate_path_criticality(self, operation_def: Dict) -> int:
-        """
-        Calculate criticality score for an API operation
-        """
-        score = 0
-        
-        # Base score for all operations
-        score += 10
-        
-        # Higher score for operations with request bodies (data modification)
-        if "requestBody" in operation_def:
-            score += 15
-        
-        # Higher score for operations with security requirements
-        if "security" in operation_def:
-            score += 10
-        
-        # Higher score for operations with multiple response codes
-        responses = operation_def.get("responses", {})
-        score += len(responses) * 2
-        
-        # Higher score for operations with parameters
-        parameters = operation_def.get("parameters", [])
-        score += len(parameters) * 3
-        
-        # Higher score for CRUD operations
-        operation_id = operation_def.get("operationId", "").lower()
-        crud_keywords = ["create", "update", "delete", "get", "list", "find"]
-        if any(keyword in operation_id for keyword in crud_keywords):
-            score += 8
-        
-        return score
-    
-    def _create_coverage_strategy(self, total_operations: int, complexity_score: int) -> Dict:
-        """
-        Create detailed coverage strategy for 70% target
-        """
-        target_operations = int(total_operations * 0.7)
-        
-        return {
-            "total_operations": total_operations,
-            "target_operations": target_operations,
-            "coverage_distribution": {
-                "happy_path": "40%",
-                "error_handling": "20%", 
-                "edge_cases": "10%"
-            },
-            "test_priorities": [
-                "Critical business operations",
-                "Data validation paths",
-                "Authentication/authorization",
-                "Primary error scenarios",
-                "Essential integrations"
-            ],
-            "excluded_areas": [
-                "Boilerplate code",
-                "Configuration files", 
-                "Simple getters/setters",
-                "Non-critical utility functions"
-            ]
-        }
-    
-    def _enrich_test_suite(self, test_suite: Dict, coverage_plan: Dict, swagger_content: Dict) -> Dict:
-        """
-        Enrich generated test suite with additional metadata and validation
-        """
-        if not isinstance(test_suite, dict):
-            return {"error": "Invalid test suite format", "raw_content": str(test_suite)}
-        
-        # Add coverage analysis
-        test_suite["coverage_validation"] = {
-            "target_coverage": f"{self.coverage_target}%",
-            "critical_paths_covered": len(coverage_plan.get("critical_paths", [])),
-            "total_operations": coverage_plan.get("total_operations", 0),
-            "estimated_coverage": self._estimate_actual_coverage(test_suite, coverage_plan)
-        }
-        
-        # Add test execution metadata
-        test_suite["execution_metadata"] = {
-            "recommended_parallel_execution": True,
-            "estimated_execution_time": self._estimate_execution_time(test_suite),
-            "resource_requirements": {
-                "memory": "512MB minimum",
-                "cpu": "2 cores recommended",
-                "storage": "100MB for test artifacts"
-            }
-        }
-        
-        # Add quality gates
-        test_suite["quality_gates"] = {
-            "minimum_coverage": "65%",
-            "target_coverage": "70%",
-            "maximum_test_execution_time": "300 seconds",
-            "code_quality_score": "A- or better"
-        }
-        
-        return test_suite
-    
-    def _estimate_actual_coverage(self, test_suite: Dict, coverage_plan: Dict) -> str:
-        """
-        Estimate actual coverage percentage based on generated tests
-        """
-        if "test_files" not in test_suite:
-            return "0%"
-        
-        test_files = test_suite["test_files"]
-        total_coverage = 0
-        
-        for file_data in test_files.values():
-            if isinstance(file_data, dict) and "coverage_contribution" in file_data:
-                try:
-                    contrib = file_data["coverage_contribution"]
-                    if isinstance(contrib, str) and contrib.endswith("%"):
-                        total_coverage += float(contrib[:-1])
-                    elif isinstance(contrib, (int, float)):
-                        total_coverage += contrib
-                except (ValueError, TypeError):
-                    continue
-        
-        return f"{min(total_coverage, 100):.1f}%"
-    
-    def _estimate_execution_time(self, test_suite: Dict) -> str:
-        """
-        Estimate test execution time based on test count and complexity
-        """
-        test_count = self._count_tests_in_suite(test_suite)
-        
-        # Estimate 0.5 seconds per unit test, 2 seconds per integration test
-        unit_tests = test_count.get("unit_tests", 0)
-        integration_tests = test_count.get("integration_tests", 0)
-        
-        estimated_seconds = (unit_tests * 0.5) + (integration_tests * 2.0)
-        
-        if estimated_seconds < 60:
-            return f"{estimated_seconds:.0f} seconds"
-        else:
-            return f"{estimated_seconds/60:.1f} minutes"
-    
-    def _count_tests_in_suite(self, test_suite: Dict) -> Dict[str, int]:
-        """
-        Count different types of tests in the generated suite
-        """
-        if not isinstance(test_suite, dict) or "test_files" not in test_suite:
-            return {"unit_tests": 0, "integration_tests": 0, "total": 0}
-        
-        unit_tests = 0
-        integration_tests = 0
-        
-        for file_data in test_suite["test_files"].values():
-            if isinstance(file_data, dict):
-                test_count = file_data.get("test_count", 0)
-                if isinstance(test_count, str):
-                    try:
-                        test_count = int(test_count)
-                    except ValueError:
-                        test_count = 0
-                
-                # Categorize based on file name or content
-                if "integration" in str(file_data.get("file_path", "")).lower():
-                    integration_tests += test_count
+            raw_content = response.content.strip()
+            # Parse the response using new explicit delimiters
+            files = {}
+            import re
+            pattern = r">>>FILE_PATH_START<<<\s*(.*?)\s*>>>FILE_PATH_END<<<\s*>>>FILE_CONTENT_START<<<\n([\s\S]*?)\n>>>FILE_CONTENT_END<<<"
+            matches = re.findall(pattern, raw_content)
+            if not matches:
+                # Fallback: Try to extract code blocks if delimiters are missing
+                fallback_pattern = r"([\w\-/]+\.py)[\s\S]*?```([\s\S]*?)```"
+                fallback_matches = re.findall(fallback_pattern, raw_content)
+                if fallback_matches:
+                    for file_path, file_content in fallback_matches:
+                        files[file_path.strip()] = file_content.strip()
+                    state["unit_tests"] = files
+                    # Create in-memory ZIP
+                    import io, zipfile
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for path, content in files.items():
+                            zip_file.writestr(path, content)
+                    zip_buffer.seek(0)
+                    state["generated_zip"] = zip_buffer.read()
                 else:
-                    unit_tests += test_count
-        
-        return {
-            "unit_tests": unit_tests,
-            "integration_tests": integration_tests,
-            "total": unit_tests + integration_tests
-        }
-    
-    def _log_test_generation_success(self, test_suite: Dict, coverage_plan: Dict):
-        """
-        Log successful test generation metrics
-        """
-        test_counts = self._count_tests_in_suite(test_suite)
-        
-        print("🎉 Test Generation Success:")
-        print(f"   📊 Total Tests: {test_counts['total']}")
-        print(f"   🔧 Unit Tests: {test_counts['unit_tests']}")
-        print(f"   🔗 Integration Tests: {test_counts['integration_tests']}")
-        print(f"   🎯 Target Coverage: {self.coverage_target}%")
-        print(f"   📈 Estimated Coverage: {self._estimate_actual_coverage(test_suite, coverage_plan)}")
-        print(f"   ⏱️ Estimated Execution: {self._estimate_execution_time(test_suite)}")
+                    state["errors"].append(
+                        f"Code generation failed: No files found in LLM response. Raw content:\n{raw_content[:1000]}"
+                    )
+                    state["unit_tests"] = {}
+            else:
+                for file_path, file_content in matches:
+                    files[file_path.strip()] = file_content.strip()
+                state["unit_tests"] = files
+                # Create in-memory ZIP
+                import io, zipfile
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    for path, content in files.items():
+                        zip_file.writestr(path, content)
+                zip_buffer.seek(0)
+                state["generated_zip"] = zip_buffer.read()
+
+            state["current_step"] = "unit_tests"
+            return state
+        except Exception as e:
+            state["errors"].append(f"Code generation failed: {str(e)}")
+            return state

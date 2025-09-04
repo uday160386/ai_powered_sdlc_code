@@ -12,12 +12,12 @@ class CodeGeneratorAgent:
     def __init__(self, llm):
         self.llm = llm
         self.prompt = ChatPromptTemplate.from_template("""
-    Generate production-ready code based on the Swagger specification:
-        
+    Based on the Swagger specification, generate a production-ready Python application, including middleware, authentication, environment configuration,  error handling and a README guide, Docker file, and AWS EKS.
+
     Swagger Content: {swagger_content}
     User Stories: {user_stories}
     Target Framework: {framework}
-        
+
     Generate:
     1. API models/schemas
     2. Service layer classes
@@ -34,10 +34,11 @@ class CodeGeneratorAgent:
     - Type hints/annotations
 
     Output format:
-    For each file, use the following delimiters:
-    <file_path>: <relative/path/to/file.py>
-    <file_content>
-    ---END FILE---
+    For each file, use the following delimiters (do not use markdown or code blocks):
+    >>>FILE_PATH_START<<< path/to/file.py >>>FILE_PATH_END<<<
+    >>>FILE_CONTENT_START<<<
+    <file content here>
+    >>>FILE_CONTENT_END<<<
     Repeat for each file. Do not return JSON. Only return plain text in the above format.
     """)
     
@@ -51,21 +52,36 @@ class CodeGeneratorAgent:
                 "framework": framework
             })
             raw_content = response.content.strip()
-            # Parse the response using delimiters
+            # Parse the response using new explicit delimiters
             files = {}
             import re
-            pattern = r"<file_path>:\s*(.*?)\n<file_content>\n([\s\S]*?)(?=---END FILE---)"
+            pattern = r">>>FILE_PATH_START<<<\s*(.*?)\s*>>>FILE_PATH_END<<<\s*>>>FILE_CONTENT_START<<<\n([\s\S]*?)\n>>>FILE_CONTENT_END<<<"
             matches = re.findall(pattern, raw_content)
             if not matches:
-                state["errors"].append(
-                    f"Code generation failed: No files found in LLM response. Raw content:\n{raw_content[:1000]}"
-                )
-                state["generated_code"] = {}
+                # Fallback: Try to extract code blocks if delimiters are missing
+                fallback_pattern = r"([\w\-/]+\.py)[\s\S]*?```([\s\S]*?)```"
+                fallback_matches = re.findall(fallback_pattern, raw_content)
+                if fallback_matches:
+                    for file_path, file_content in fallback_matches:
+                        files[file_path.strip()] = file_content.strip()
+                    state["generated_code"] = files
+                    # Create in-memory ZIP
+                    import io, zipfile
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for path, content in files.items():
+                            zip_file.writestr(path, content)
+                    zip_buffer.seek(0)
+                    state["generated_zip"] = zip_buffer.read()
+                else:
+                    state["errors"].append(
+                        f"Code generation failed: No files found in LLM response. Raw content:\n{raw_content[:1000]}"
+                    )
+                    state["generated_code"] = {}
             else:
                 for file_path, file_content in matches:
                     files[file_path.strip()] = file_content.strip()
                 state["generated_code"] = files
-
                 # Create in-memory ZIP
                 import io, zipfile
                 zip_buffer = io.BytesIO()

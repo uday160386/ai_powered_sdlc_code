@@ -12,90 +12,69 @@ class UserStoryAgent:
         self.llm = llm
 
         self.prompt = ChatPromptTemplate.from_template("""
-        You are an expert API business analyst. Include edge cases and error handling scenarios.
-        Based on the Swagger API analysis, generate comprehensive user stories:
-        
-        API Analysis: {analysis}
-        Swagger Paths: {paths}
-        
-        For each endpoint, create user stories that include:
-        1. title
-        2. user_story (As a... I want... So that...)
-        3. acceptance_criteria (Given/When/Then format)
-        4. priority (High/Medium/Low)
-        5. estimated_effort (Story points 1-13)
-        6. type (functional or non-functional)
-        7. edge_cases Create both functional and non-functional stories.
-        8. reference provide clear references to the API documentation, request payload and other relevant resources.
+    You are an expert API business analyst. Include edge cases and error handling scenarios.
+    Based on the Swagger API analysis, generate comprehensive user stories:
 
-        
-        Focus on business value and user needs. Consider different user personas.
-        Return as a JSON array of user story objects.
-        """)
+    API Analysis: {analysis}
+    Swagger Paths: {paths}
+
+    For each endpoint, create user stories that include:
+    1. title
+    2. user_story (As a... I want... So that...)
+    3. acceptance_criteria (Given/When/Then format)
+    4. priority (High/Medium/Low)
+    5. estimated_effort (Story points 1-13)
+    6. type (functional or non-functional)
+    7. edge_cases Create both functional and non-functional stories.
+    8. reference provide clear references to the API documentation, request payload and other relevant resources.
+
+    Focus on business value and user needs. Consider different user personas.
+    Return your response as a strict, valid JSON array. Do not include any trailing commas, comments, or unquoted keys. Ensure all brackets and braces are closed. Do not include any text before or after the JSON array.
+    """)
     
     async def generate_stories(self, state: WorkflowState) -> WorkflowState:
         try:
             paths = state["swagger_content"].get("paths", {})
             chain = self.prompt | self.llm
-            
-            response = await chain.ainvoke({
+            response = chain.invoke({
                 "analysis": json.dumps(state["metadata"], indent=2),
                 "paths": json.dumps(paths, indent=2)
             })
+            raw_content = json.loads(response.content)
+            print("raw_content")
             
-            stories = safe_json_loads(response.content)
-            state["user_stories"] = stories
+            # try:
+            #     stories = safe_json_loads(raw_content)
+            # except Exception as parse_err:
+            #     # Fallback: Try to extract the largest valid JSON array from the response
+            #     import re
+            #     match = re.search(r'(\[[\s\S]+\])', raw_content)
+            #     if match:
+            #         candidate = match.group(1)
+            #         try:
+            #             stories = safe_json_loads(candidate)
+            #         except Exception as inner_err:
+            #             # Attempt to auto-close brackets/braces
+            #             open_brackets = candidate.count('[')
+            #             close_brackets = candidate.count(']')
+            #             open_braces = candidate.count('{')
+            #             close_braces = candidate.count('}')
+            #             fixed = candidate + (']' * (open_brackets - close_brackets)) + ('}' * (open_braces - close_braces))
+            #             try:
+            #                 stories = safe_json_loads(fixed)
+            #             except Exception as final_err:
+            #                 state["errors"].append(
+            #                     f"User story generation failed: Could not parse JSON array after auto-fix. Raw content:\n{raw_content[:1000]}"
+            #                 )
+            #                 stories = []
+            #     else:
+            #         state["errors"].append(f"User story generation failed: Could not find JSON array. Raw content:\n{raw_content[:1000]}")
+            #         stories = []
+            state["user_stories"] = raw_content
             state["current_step"] = "code_generation"
             return state
         except Exception as e:
             state["errors"].append(f"User story generation failed: {str(e)}")
             return state
 
-    def _calculate_complexity_score(self, paths: Dict, schemas: Dict) -> Dict[str, Any]:
-      
-        
-        # Count different HTTP methods
-        method_counts = {}
-        total_operations = 0
-        
-        for path, methods in paths.items():
-            for method in methods:
-                if method in ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']:
-                    method_counts[method] = method_counts.get(method, 0) + 1
-                    total_operations += 1
-        
-        # Calculate schema complexity
-        schema_complexity = sum(
-            len(schema.get('properties', {})) for schema in schemas.values()
-        )
-        
-        return {
-            "total_endpoints": len(paths),
-            "total_operations": total_operations,
-            "method_distribution": method_counts,
-            "schema_count": len(schemas),
-            "schema_complexity_score": schema_complexity,
-            "complexity_rating": self._get_complexity_rating(total_operations, len(schemas))
-        }
-    
-    def _generate_next_steps(self, analysis: Dict) -> List[str]:
-        """Generate recommended next steps based on analysis"""
-        next_steps = ["Generate user stories based on API analysis"]
-        
-        # Add conditional steps based on analysis content
-        if "potential_improvements_recommendations" in analysis:
-            next_steps.append("Review and prioritize improvement recommendations")
-        
-        if "risk_assessment" in analysis:
-            next_steps.append("Create risk mitigation plan")
-        
-        if "security_compliance_story" in analysis:
-            next_steps.append("Validate security and compliance requirements")
-        
-        next_steps.extend([
-            "Create API integration documentation",
-            "Develop testing strategy",
-            "Plan monitoring and observability"
-        ])
-        
-        return next_steps
+   

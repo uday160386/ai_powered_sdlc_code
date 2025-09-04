@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 import asyncio
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
+# from langchain_openai import ChatOpenAI
 import zipfile
 import io
 import os
@@ -19,6 +19,7 @@ from app.agent.CodeGenerationAgent import CodeGeneratorAgent
 from app.agent.UnitTestcaseGenerationAgent import TestGeneratorAgent
 from IPython.display import Image, display
 
+from langchain_anthropic import ChatAnthropic
 
 # State Management
 class WorkflowState(TypedDict):
@@ -47,13 +48,18 @@ class AgentResult:
 
 # LangGraph Workflow Definition
 class AgenticWorkflow:
-    def __init__(self, api_key: str, framework: str):
-        self.llm = ChatOpenAI(
-            api_key=api_key,
-            model="gpt-4-turbo-preview",
-            temperature=0.3
+    def __init__(self, api_key: str, framework: str, test_framework: str):
+        
+        
+        self.llm = ChatAnthropic(
+            model="claude-sonnet-4-20250514",  # Or other models like "claude-3-opus-20240229"
+            api_key=api_key,  # Use this if not using environment variable
+            temperature=0.3,
+            max_tokens=7000  # Set a reasonable max token limit for output
         )
+        
         self.framework = framework
+        self.test_framework= test_framework
         self.swagger_agent = SwaggerAnalyzerAgent(self.llm)
         self.story_agent = UserStoryAgent(self.llm)
         self.code_agent = CodeGeneratorAgent(self.llm)
@@ -71,18 +77,21 @@ class AgenticWorkflow:
         workflow.add_node("generate_stories", self.story_agent.generate_stories)
         # Pass framework to code generation node
         async def generate_code_with_framework(state):
-            print(self.framework)
             state["framework"] = self.framework
             return await self.code_agent.generate_code(state, self.framework)
+        
+        async def generate_code_with_test_framework(state):
+            state["test_framework"] = self.test_framework
+            return await self.test_agent.generate_tests(state, self.test_framework)
 
         workflow.add_node("generate_code", generate_code_with_framework)
-        # workflow.add_node("generate_tests", self.test_agent.generate_tests)
+        workflow.add_node("generate_tests", generate_code_with_test_framework)
         
         # Define the workflow edges
         workflow.add_edge("analyze_swagger", "generate_stories")
         workflow.add_edge("generate_stories", "generate_code")
-        workflow.add_edge("generate_code", END)
-        # workflow.add_edge("generate_tests", END)
+        workflow.add_edge("generate_code", "generate_tests")
+        workflow.add_edge("generate_tests", END)
         
         # Set entry point
         workflow.set_entry_point("analyze_swagger")
@@ -113,7 +122,7 @@ def main():
         layout="wide"
     )
     
-    st.title("🤖 AI Powered SDLC workflow")
+    st.sidebar.title("🤖 AI Powered SDLC workflow")
     # st.subtitle("Automated User Stories, Code & Test Generation from Swagger/OpenAPI")
     
     # Sidebar configuration
@@ -130,7 +139,7 @@ def main():
     #     st.warning("Please enter your OpenAI API key in the sidebar to continue.")
     #     return
     load_dotenv()
-    api_key = os.getenv("OPENAI_API_KEY", None)
+    api_key = os.getenv("ANTHROPIC_API_KEY", None)
     # Framework selection
     framework = st.sidebar.selectbox(
         "Code Framework",
@@ -150,7 +159,7 @@ def main():
     
     # File upload
     # st.header("📁 Upload Swagger/OpenAPI File")
-    uploaded_file = st.file_uploader(
+    uploaded_file = st.sidebar.file_uploader(
         "Choose a Swagger/OpenAPI file",
         type=['json', 'yaml', 'yml'],
         help="Upload your Swagger/OpenAPI specification file"
@@ -163,15 +172,19 @@ def main():
                 swagger_content = json.loads(uploaded_file.read())
             else:
                 swagger_content = yaml.safe_load(uploaded_file.read())
-            
-            st.success(f"✅ Successfully loaded {uploaded_file.name}")
-            
-            # Display swagger info
-            info = swagger_content.get('info', {})
-            st.info(f"**API:** {info.get('title', 'Unknown')} v{info.get('version', '1.0')}")
-            
+
+            import time
+            success_msg = st.sidebar.empty()
+            success_msg.success(f"✅ Successfully loaded {uploaded_file.name}")
+            # time.sleep(1)
+            success_msg.empty()
+
+            # # Display swagger info
+            # info = swagger_content.get('info', {})
+            # st.sidebar.info(f"**API:** {info.get('title', 'Unknown')} v{info.get('version', '1.0')}")
+
             # Process button
-            if st.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
+            if st.sidebar.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
                 st.session_state.processing = True
                 
                 # Progress indicators
@@ -180,7 +193,7 @@ def main():
                 
                 try:
                     # Initialize workflow with framework
-                    workflow = AgenticWorkflow(api_key, framework)
+                    workflow = AgenticWorkflow(api_key, framework, test_framework)
                     # Run the workflow
                     status_text.text("🔍 Analyzing Swagger specification...")
                     progress_bar.progress(25)
@@ -207,7 +220,7 @@ def main():
         
         # Create tabs for different outputs
         tab1, tab2, tab3, tab4 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "📁 Download All"])
-        
+
         with tab1:
             st.subheader("Generated User Stories")
             if results.get("user_stories"):

@@ -15,6 +15,8 @@ import io
 import re
 import os
 from dotenv import load_dotenv
+from langchain_community.llms import Anthropic
+
 
 # State Management
 class WorkflowState(TypedDict):
@@ -44,9 +46,10 @@ class AgentResult:
 # LangGraph Workflow Definition
 class AgenticWorkflow:
     def __init__(self, api_key: str):
-        self.llm = ChatOpenAI(
+        
+        self.llm = Anthropic(
             api_key=api_key,
-            model="gpt-4-turbo-preview",
+            model="claude-3-sonnet-20240229",
             temperature=0.3
         )
         
