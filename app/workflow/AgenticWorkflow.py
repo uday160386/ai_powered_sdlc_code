@@ -2,32 +2,21 @@
 from langchain_anthropic import ChatAnthropic
 
 # Local imports
-from app.agent.SwaggerAnalyzerAgent import SwaggerAnalyzerAgent
-from app.agent.UserStoryGenerationAgent import UserStoryAgent
-from app.agent.CodeGenerationAgent import CodeGeneratorAgent
-from app.agent.UnitTestcaseGenerationAgent import TestGeneratorAgent
-from app.agent.ContainerziedCodeGenerationAgent import ContainerziedCodeGenerationAgent
-from app.agent.SetUpguideAgent import SetUpGuideAgent
+from app.agent.req.SwaggerAnalyzerAgent import SwaggerAnalyzerAgent
+from app.agent.story.UserStoryGenerationAgent import UserStoryAgent
+from app.agent.code.CodeGenerationAgent import CodeGeneratorAgent
+from app.agent.test.UnitTestcaseGenerationAgent import TestGeneratorAgent
+from app.agent.container.ContainerziedCodeGenerationAgent import ContainerziedCodeGenerationAgent
+from app.agent.info.SetUpguideAgent import SetUpGuideAgent
 
 from langgraph.graph import StateGraph, END
 
 from dataclasses import dataclass
-from typing import Dict, List, Any, TypedDict
+from typing import Dict, Any
 
 from enum import Enum
 
-# State Management
-class WorkflowState(TypedDict):
-    swagger_content: Dict[str, Any]
-    user_stories: List[Dict[str, Any]]
-    generated_code: Dict[str, str]
-    generated_container_code: Dict[str, str]
-    unit_tests: Dict[str, str]
-    readme: Dict[str, str]
-    current_step: str
-    errors: List[str]
-    metadata: Dict[str, Any]
-
+from app.workflow.WorkflowState import WorkflowState
 class StepStatus(Enum):
     PENDING = "pending"
     RUNNING = "running"

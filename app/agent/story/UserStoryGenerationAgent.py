@@ -4,7 +4,7 @@ from langchain.prompts import ChatPromptTemplate
 from app.util.safe_text_genneration import safe_json_loads
 
 
-from app.workflow.langgraph_agentic_workflow import WorkflowState
+from app.workflow.WorkflowState import WorkflowState
 
 
 class UserStoryAgent:

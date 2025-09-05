@@ -22,35 +22,100 @@ def main():
     )
     
     st.title("🤖 SToP")
-    st.subheader("AI Powered, production-ready code generator")
+    st.subheader("AI Powered, API Design To Production Ready Product Generator ")
     
     # Sidebar configuration
-    st.sidebar.header("Configuration")
+    st.sidebar.header("Swagger To Production ready code")
 
-    load_dotenv()
-    api_key = os.getenv("ANTHROPIC_API_KEY", None)
-    
-    # user story selection option
-    user_story_selection = st.sidebar.selectbox(
-        "User Story Generation",
-        ["Yes",  "No"]
-    )
-    
+    with st.sidebar.expander("Model Selection", expanded=False):
+        model_selection = st.selectbox(
+            "Select model",
+            ["ChatGPT", "Claude", "None"]
+        )
+        api_key = st.text_input(
+            "Model API Key",
+            type="password",
+            help="Enter your OpenAI API key to use the AI agents"
+        )
+        if not api_key:
+            st.warning("Please enter your model API key in the sidebar to continue.")
+            return
+                
+    with st.sidebar.expander("User Story Generation", expanded=False):
+        user_story_selection = st.selectbox(
+            "Generate user stories",
+            ["Yes", "No"]
+        )
+        
+    with st.sidebar.expander("Code Generation Options", expanded=False):
     # Framework selection
-    framework = st.sidebar.selectbox(
-        "Code Framework",
-        ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot", "No Selection"]
-    )
-    test_framework = st.sidebar.selectbox(
-        "Test Framework",
-        ["pytest", "unittest", "Jest", "JUnit", "Mocha", "No Selection"]
-    )
-    
-    cloud_option = st.sidebar.selectbox(
-        "Public Cloud",
-        ["AWS", "Azure", "No Selection"]
-    )
-   
+        framework = st.selectbox(
+            "Select Framework",
+            ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot", "No Selection"]
+        )
+    with st.sidebar.expander("Test Generation Options", expanded=False):
+        test_framework = st.selectbox(
+            "Select Test Framework",
+            ["pytest", "unittest", "Jest", "JUnit", "Mocha", "No Selection"],
+            help="Generating professional test suite targeting 70% coverage..."
+        )
+
+    with st.sidebar.expander("Cloud Deployment Options", expanded=False):
+        cloud_option = st.selectbox(
+            "Select Public Cloud",
+            ["AWS", "Azure", "No Selection"]
+        )
+    with st.sidebar.expander("Swagger File upload", expanded=False):
+        # File upload
+        # st.header("📁 Upload Swagger/OpenAPI File")
+        uploaded_file = st.file_uploader(
+            "Choose a Swagger/OpenAPI file",
+            type=['json', 'yaml', 'yml'],
+            help="Upload your Swagger/OpenAPI specification file"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Parse the uploaded file
+                if uploaded_file.name.endswith('.json'):
+                    swagger_content = json.loads(uploaded_file.read())
+                else:
+                    swagger_content = yaml.safe_load(uploaded_file.read())
+
+                import time
+                success_msg = st.sidebar.empty()
+                success_msg.success(f"✅ Successfully loaded {uploaded_file.name}")
+        
+                success_msg.empty()
+
+
+                # Process button
+                if st.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
+                    st.session_state.processing = True
+                    
+                    # Progress indicators
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    try:
+                        # Initialize workflow with framework
+                        workflow = AgenticWorkflow(api_key, framework, test_framework, cloud_option)
+                        # Run the workflow
+                        status_text.text("🔍 Artifacts generation in progress...")
+                        progress_bar.progress(25)
+                        # Since we can't use asyncio in Streamlit directly, we'll simulate the workflow
+                        # In a real implementation, you'd use asyncio.run() or similar
+                        result = asyncio.run(workflow.run_workflow(swagger_content))
+                        progress_bar.progress(100)
+                        status_text.text("✅ Artificats Generated successfully!")
+                        st.session_state.workflow_results = result
+                    except Exception as e:
+                        st.error(f"❌ Workflow failed: {str(e)}")
+                    finally:
+                        st.session_state.processing = False
+            
+            except Exception as e:
+                st.error(f"❌ Failed to parse file: {str(e)}")
     
     # Initialize session state
     if 'workflow_results' not in st.session_state:
@@ -58,56 +123,7 @@ def main():
     if 'processing' not in st.session_state:
         st.session_state.processing = False
     
-    # File upload
-    # st.header("📁 Upload Swagger/OpenAPI File")
-    uploaded_file = st.sidebar.file_uploader(
-        "Choose a Swagger/OpenAPI file",
-        type=['json', 'yaml', 'yml'],
-        help="Upload your Swagger/OpenAPI specification file"
-    )
     
-    if uploaded_file is not None:
-        try:
-            # Parse the uploaded file
-            if uploaded_file.name.endswith('.json'):
-                swagger_content = json.loads(uploaded_file.read())
-            else:
-                swagger_content = yaml.safe_load(uploaded_file.read())
-
-            import time
-            success_msg = st.sidebar.empty()
-            success_msg.success(f"✅ Successfully loaded {uploaded_file.name}")
-       
-            success_msg.empty()
-
-
-            # Process button
-            if st.sidebar.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
-                st.session_state.processing = True
-                
-                # Progress indicators
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                try:
-                    # Initialize workflow with framework
-                    workflow = AgenticWorkflow(api_key, framework, test_framework, cloud_option)
-                    # Run the workflow
-                    status_text.text("🔍 Artifacts generation in progress...")
-                    progress_bar.progress(25)
-                    # Since we can't use asyncio in Streamlit directly, we'll simulate the workflow
-                    # In a real implementation, you'd use asyncio.run() or similar
-                    result = asyncio.run(workflow.run_workflow(swagger_content))
-                    progress_bar.progress(100)
-                    status_text.text("✅ Workflow completed successfully!")
-                    st.session_state.workflow_results = result
-                except Exception as e:
-                    st.error(f"❌ Workflow failed: {str(e)}")
-                finally:
-                    st.session_state.processing = False
-        
-        except Exception as e:
-            st.error(f"❌ Failed to parse file: {str(e)}")
     
 
     # Display results

@@ -6,16 +6,15 @@ from pathlib import Path
 from typing import Dict, Any
 from app.util.safe_text_genneration import safe_json_loads
 from langchain.prompts import ChatPromptTemplate
-from app.workflow.langgraph_agentic_workflow import WorkflowState
+from app.workflow.WorkflowState import WorkflowState
 
 class ContainerziedCodeGenerationAgent:
     def __init__(self, llm):
         self.llm = llm
         self.prompt = ChatPromptTemplate.from_template("""
-    Based on the generated production-ready code create Docker file,helm charts, and Public cloud configs, k8, and code files.
+    Based on the generated production-ready code create Docker file,helm charts, and AWS EKS or Azure Kubernetes Service (AKS) code files.
 
     Generated Code: {generated_code}
-    Framework: {framework}
     
     Generate:
     1. API models/schemas
@@ -42,7 +41,6 @@ class ContainerziedCodeGenerationAgent:
     """)
     
     async def generate_code(self, state: WorkflowState, framework: str = "AWS EKS") -> WorkflowState:
-
         try:
             generated_code = state.get("generated_code", {})
             chain = self.prompt | self.llm

@@ -1,5 +1,5 @@
 from langchain.prompts import ChatPromptTemplate
-from app.workflow.langgraph_agentic_workflow import WorkflowState
+from app.workflow.WorkflowState import WorkflowState
 import json
 from typing import Dict, List, Any
 from datetime import datetime
@@ -166,9 +166,6 @@ class TestGeneratorAgent:
             swagger_content = state.get("swagger_content", {})
             generated_code = state.get("generated_code", {})
             user_stories = state.get("user_stories", [])
-            
-            print(f"🎯 Generating professional test suite targeting 70% coverage...")
-            print(f"📋 Framework: {test_framework}")
             
             # Generate tests using LLM
             chain = self.prompt | self.llm

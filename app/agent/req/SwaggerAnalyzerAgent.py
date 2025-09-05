@@ -1,7 +1,7 @@
 import json
 from langchain.prompts import ChatPromptTemplate
 
-from app.workflow.langgraph_agentic_workflow import WorkflowState
+from app.workflow.WorkflowState import WorkflowState
 from app.util.safe_text_genneration import safe_json_loads
 
 class SwaggerAnalyzerAgent:
