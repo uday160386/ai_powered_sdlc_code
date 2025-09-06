@@ -7,6 +7,7 @@ from app.agent.story.UserStoryGenerationAgent import UserStoryAgent
 from app.agent.code.CodeGenerationAgent import CodeGeneratorAgent
 from app.agent.test.UnitTestcaseGenerationAgent import TestGeneratorAgent
 from app.agent.container.ContainerziedCodeGenerationAgent import ContainerziedCodeGenerationAgent
+from app.agent.monitor.ProductionMonitorAgent import ProductionMonitorGenerationAgent
 from app.agent.info.SetUpguideAgent import SetUpGuideAgent
 
 from langgraph.graph import StateGraph, END
@@ -52,7 +53,10 @@ class AgenticWorkflow:
         self.container_code_agent = ContainerziedCodeGenerationAgent(self.llm)
         self.test_agent = TestGeneratorAgent(self.llm)
         self.setup_agent = SetUpGuideAgent(self.llm)
+        self.monitor_agent = ProductionMonitorGenerationAgent(self.llm)
+        
         self.workflow = self._build_workflow()
+        
         
 
     def _build_workflow(self) -> StateGraph:
@@ -66,6 +70,8 @@ class AgenticWorkflow:
         workflow.add_node("generated_container_code",  self.container_code_agent.generate_code )
         workflow.add_node("generated_readme_code",  self.setup_agent.generate_code )
 
+        workflow.add_node("generated_monitor_configs",  self.monitor_agent.generate_code )
+        
         async def generate_code_with_framework(state):
             state["framework"] = self.framework
             return await self.code_agent.generate_code(state, self.framework)
@@ -85,7 +91,8 @@ class AgenticWorkflow:
         workflow.add_edge("generate_stories", "generate_code")
         workflow.add_edge("generate_code", "generate_tests")
         workflow.add_edge("generate_tests", "generated_container_code")
-        workflow.add_edge("generated_container_code", "generated_readme_code")
+        workflow.add_edge("generated_container_code", "generated_monitor_configs")
+        workflow.add_edge("generated_monitor_configs", "generated_readme_code")
         workflow.add_edge("generated_readme_code", END)
 
         # Set entry point
@@ -102,6 +109,7 @@ class AgenticWorkflow:
             "unit_tests": {},
             "generated_container_code": {},
             "readme": {},
+            "generated_monitor_configs": {},
             "current_step": "analyze_swagger",
             "errors": [],
             "metadata": {}

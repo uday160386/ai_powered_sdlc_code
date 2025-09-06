@@ -9,12 +9,14 @@ class TestGeneratorAgent:
         self.llm = llm
         self.coverage_target = 70  # 70% coverage target
         self.prompt = ChatPromptTemplate.from_template("""
-        You are a senior software test engineer with expertise in API testing and achieving precise code coverage targets.
-        Generate professional, production-ready unit tests that achieve exactly 70% code coverage.
-
-        **Swagger Specification Analysis:**
+                                                       
         Generated Code: {generated_code}
         Test Framework: {test_framework}
+        You are a senior software test engineer with expertise in API testing and achieving precise code coverage targets.
+        Generate professional, production-ready unit tests using {test_framework}that achieve exactly 70% code coverage.
+
+        **Swagger Specification Analysis:**
+        
 
         **Coverage Strategy for 70% Target:**
         - Focus on critical business logic paths

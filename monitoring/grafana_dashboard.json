@@ -1,0 +1,86 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "AI SDLC Workflow Metrics",
+    "tags": ["ai", "workflow", "sdlc"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "type": "graph",
+        "title": "Workflow Step Duration (seconds)",
+        "targets": [
+          {"expr": "ai_workflow_step_duration_seconds", "legendFormat": "{{step}}"}
+        ],
+        "id": 1
+      },
+      {
+        "type": "stat",
+        "title": "Total Workflow Runs",
+        "targets": [
+          {"expr": "ai_workflow_total_runs"}
+        ],
+        "id": 2
+      },
+      {
+        "type": "stat",
+        "title": "Total Errors",
+        "targets": [
+          {"expr": "ai_workflow_total_errors"}
+        ],
+        "id": 3
+      },
+      {
+        "type": "bar gauge",
+        "title": "Generated Files by Type",
+        "targets": [
+          {"expr": "ai_workflow_generated_files_total", "legendFormat": "{{type}}"}
+        ],
+        "id": 4
+      },
+      {
+        "type": "piechart",
+        "title": "Cloud Selection",
+        "targets": [
+          {"expr": "ai_workflow_cloud_selection_total", "legendFormat": "{{cloud}}"}
+        ],
+        "id": 5
+      },
+      {
+        "type": "table",
+        "title": "Agent Latency (seconds)",
+        "targets": [
+          {"expr": "ai_workflow_agent_latency_seconds", "legendFormat": "{{agent}}"}
+        ],
+        "id": 6
+      },
+      {
+        "type": "table",
+        "title": "Agent Requests & Failures",
+        "targets": [
+          {"expr": "ai_workflow_agent_requests_total", "legendFormat": "{{agent}}"},
+          {"expr": "ai_workflow_agent_failures_total", "legendFormat": "{{agent}}"}
+        ],
+        "id": 7
+      },
+      {
+        "type": "stat",
+        "title": "ZIP Downloads",
+        "targets": [
+          {"expr": "ai_workflow_zip_downloads_total"}
+        ],
+        "id": 8
+      },
+      {
+        "type": "stat",
+        "title": "Mermaid Diagram Renders",
+        "targets": [
+          {"expr": "ai_workflow_mermaid_render_total"}
+        ],
+        "id": 9
+      }
+    ]
+  }
+}

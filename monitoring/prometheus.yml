@@ -1,0 +1,27 @@
+# Prometheus configuration for AI-Powered SDLC Workflow
+
+scrape_configs:
+  - job_name: 'streamlit_app'
+    static_configs:
+      - targets: ['localhost:8000']
+
+  - job_name: 'ai_agents'
+    static_configs:
+      - targets: ['localhost:9000']
+
+# Example metric templates (to be exposed by your app via /metrics endpoint)
+# - ai_workflow_step_duration_seconds{step="analyze_swagger"}
+# - ai_workflow_step_success_total{step="generate_code"}
+# - ai_workflow_step_failure_total{step="generate_tests"}
+# - ai_workflow_total_errors
+# - ai_workflow_total_runs
+# - ai_workflow_active_sessions
+# - ai_workflow_generated_files_total{type="code|test|container"}
+# - ai_workflow_cloud_selection_total{cloud="aws|azure"}
+# - ai_workflow_agent_latency_seconds{agent="CodeGeneratorAgent"}
+# - ai_workflow_agent_requests_total{agent="TestGeneratorAgent"}
+# - ai_workflow_agent_failures_total{agent="UserStoryAgent"}
+# - ai_workflow_zip_downloads_total
+# - ai_workflow_mermaid_render_total
+
+# Add more scrape_configs for other services as needed

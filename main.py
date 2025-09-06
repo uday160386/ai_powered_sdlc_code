@@ -6,7 +6,7 @@ import yaml
 import zipfile
 import asyncio
 
-
+from IPython.display import Image, display
 from app.workflow.AgenticWorkflow import AgenticWorkflow
 
 # Third-party imports
@@ -51,7 +51,7 @@ def main():
     # Framework selection
         framework = st.selectbox(
             "Select Framework",
-            ["FastAPI", "Flask", "Django", "Express.js", "Spring Boot", "No Selection"]
+            ["FastAPI", "Flask", "Spring Boot", "No Selection"]
         )
     with st.sidebar.expander("Test Generation Options", expanded=False):
         test_framework = st.selectbox(
@@ -91,6 +91,7 @@ def main():
 
                 # Process button
                 if st.button("🚀 Generate Components", type="primary", disabled=st.session_state.processing):
+
                     st.session_state.processing = True
                     
                     # Progress indicators
@@ -100,6 +101,8 @@ def main():
                     try:
                         # Initialize workflow with framework
                         workflow = AgenticWorkflow(api_key, framework, test_framework, cloud_option)
+                        
+
                         # Run the workflow
                         status_text.text("🔍 Artifacts generation in progress...")
                         progress_bar.progress(25)
@@ -130,7 +133,7 @@ def main():
     if st.session_state.workflow_results:
         results = st.session_state.workflow_results
         st.header("📊 Workflow Results")
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "Container Code","Setup guide", "📁 Download All"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📝 User Stories", "💻 Generated Code", "🧪 Unit Tests", "Container Code","Setup guide","Monitoring Configs", "📁 Download All"])
 
         with tab1:
             st.subheader("Generated User Stories")
@@ -182,6 +185,14 @@ def main():
             else:
                 st.info("No Readme file generated yet.")        
         with tab6:
+            st.subheader("Monitoring Configs")
+            if results.get("generated_monitor_configs"):
+                for generated_readme in results["generated_monitor_configs"].items():
+                    with st.expander(f"🧪 Setup Instructions to follow"):
+                        st.code(generated_readme)
+            else:
+                st.info("No production configs defined") 
+        with tab7:
             st.subheader("Download All Generated Files")
             
             if results.get("generated_code") or results.get("unit_tests") or results.get("generated_container_code"):

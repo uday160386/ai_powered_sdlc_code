@@ -12,11 +12,13 @@ class UserStoryAgent:
         self.llm = llm
 
         self.prompt = ChatPromptTemplate.from_template("""
-    You are an expert API business analyst. Include edge cases and error handling scenarios.
-    Based on the Swagger API analysis, generate comprehensive user stories:
-
+                                                       
     API Analysis: {analysis}
     Swagger Paths: {paths}
+    You are an expert API business analyst. Include edge cases and error handling scenarios.
+    Based on the {analysis} and {paths}, generate comprehensive user stories:
+
+   
 
     For each endpoint, create user stories that include:
     1. title
